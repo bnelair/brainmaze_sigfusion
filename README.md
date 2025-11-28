@@ -31,4 +31,20 @@ Open that file for the detailed requirements and a minimal proposed Python API.
 
 - `documents/`
   - `sw_req.md` — Software Requirements Specification (SRS).
+- `docs/`
+  - `testing.md` — Testing and pytest implementation guide.
 
+## Testing
+
+Development dependencies are declared in `pyproject.toml` under the `dev` optional-dependencies group. To set up a development environment and run tests, see `docs/testing.md`.
+
+## Recommended next steps
+
+1. Implement a minimal `SynchronizationMap` class (save/load) and add unit tests.
+2. Implement `BrainmazeSync.compute_alignment` using envelope downsampling for coarse alignment and a chunk-based refinement loop. Use `mef_tools` for lazy reading of MEF data.
+3. Implement `UnifiedMefReader.read_data` with preference/fallback logic and stitching across sources.
+4. Add a small CLI or notebook demonstrating alignment on sample data.
+
+## Contact / Notes
+
+If you want me to scaffold the initial implementation or add unit tests / CI, tell me which piece to start with and I'll create a small, runnable prototype and tests.

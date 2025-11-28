@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "brainmaze_sigcoreg"
+# Version is dynamically provided from src/brainmaze_sigcoreg/_version.py
+dynamic = ["version"]
+description = "Temporal synchronization and fusion of electrophysiology MEF recordings."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [ { name = "Your Name" } ]
+license = { text = "MIT" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+# Configure setuptools dynamic metadata to read version from the package single-source file
+[tool.setuptools.dynamic]
+version = { attr = "brainmaze_sigcoreg._version.__version__" }
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-q --strict-markers"
+testpaths = ["tests"]
+python_files = "test_*.py"
+markers = "\n    slow: marks tests as slow (deselect with -m \"not slow\")\n"
+
+# Optional dependency groups; use `pip install -e '.[dev]'` to install development tools
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.0",
+  "pytest-cov",
+  "pytest-mock",
+]

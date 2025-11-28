@@ -2,7 +2,7 @@
 
 ## 1. Overview and Scope
 
-The objective of **brainmaze_sigfusion** is to provide a Python-based utility for the temporal synchronization and fusion of electrophysiological time-series data from two independent parallel recording sources (for example, recordings with differing hardware clocks, sampling rates, and durations). The tool shall utilize the `mef_tools` library for I/O operations and provide a unified interface for accessing merged data streams.
+The objective of **brainmaze_sigfusion** is to provide a Python-based utility for the temporal synchronization and fusion of electrophysiological time-series data from two independent recording sources (for example, recordings with differing hardware clocks, sampling rates, and durations). The tool shall utilize the `mef_tools` library for I/O operations and provide a unified interface for accessing merged data streams.
 
 This document describes functional and non-functional requirements, persistence behavior, and a proposed Python API.
 
@@ -28,7 +28,7 @@ To account for non-linear clock drift and periodic signal artifacts (for example
   - Rationale: This stage must be robust against local minima caused by periodic patterns (for example, stimulation occurring 1 minute ON, 2-5 minutes OFF) to prevent phase-shifted misalignment.
 
 - **REQ-2.2.2 (Stage II — Fine Local Alignment)**: The system shall refine alignment using a sliding-window (chunk-based) approach.
-  - The chunk size shall be a configurable parameter (default: 10 minutes).
+  - The chunk size shall be a configurable parameter (default: 5 minutes).
   - For each chunk, the system shall estimate local clock drift and produce a time-varying transformation map T(t) that relates the time basis of Source_B to Source_A.
 
 ### 2.3. Persistence and State Management
@@ -41,7 +41,7 @@ To account for non-linear clock drift and periodic signal artifacts (for example
 
 The core deliverable is a class that abstracts the complexity of reading two MEF files into a single data provider.
 
-- **REQ-2.4.1 (API Consistency)**: The class shall expose an API consistent with a standard `MefReader`, allowing calls such as `get_data()`.
+- **REQ-2.4.1 (API Consistency)**: The class shall expose an API consistent with a standard `MefReader`, allowing calls such as `read_channel()` or `get_data()`.
 
 - **REQ-2.4.2 (Prioritization Logic)**: The user shall be able to designate a **Preferred Source** (for example, Source_B, the 8 h recording that contains stimulation data).
 
@@ -57,8 +57,15 @@ The core deliverable is a class that abstracts the complexity of reading two MEF
 
 - **REQ-3.1 (Performance)**: The coarse alignment stage must use downsampled envelopes or efficient vectorized operations (for example, NumPy) to ensure processing feasibility for 24-hour recordings.
 
-- **REQ-3.2 (Memory Efficiency Configurability)**: The alignment process msut not load the entirety of Source_A (24 h) into RAM simultaneously. However, the user can specify otherwise, if the window set being longer than the recording. This si acceptable behavior for signals with 256 Hz sampling rate but the user needs to be able to select a shorter processing window for data with high sampling rates. 
+- **REQ-3.2 (Memory Efficiency)**: The alignment process must not load the entirety of Source_A (24 h) into RAM simultaneously. It must use lazy loading or memory mapping provided by `mef_tools`.
 
 - **REQ-3.3 (Sampling Rate Independence)**: The system must handle inputs with differing sampling rates. The output stream shall correspond to the sampling rate of the requested Preferred Source or to a user-defined target rate.
+
+- **REQ-3.4 (Cross-platform Compatibility & Architecture Independence)**: The system shall be cross-platform and architecture-independent. Specifically:
+  - The software must run on major operating systems: Linux, macOS, and Windows.
+  - The implementation must support common CPU architectures (x86_64, ARM64) where Python is available.
+  - Avoid OS-specific system calls, path assumptions, or shell-dependent behavior in the core library. Use portable libraries (`pathlib`, `os`, cross-platform packaging) and provide platform-specific adapters only when strictly necessary.
+  - Prefer pure-Python implementations or provide pre-built binary wheels for any native extensions so users on all supported platforms can install the package without building from source.
+  - The CI pipeline shall exercise at least one runner per supported OS/architecture to validate cross-platform behavior (see `.github/workflows/pytest.yml`).
 
 ---
