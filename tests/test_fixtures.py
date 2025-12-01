@@ -553,74 +553,80 @@ def test_floating_clock_fixture(generated_signals_floating_clock):
 
     print(f"\n--- Creating Comparison Plots ---")
 
-    # 7. Plot 1: Full signal overview
-    import matplotlib.pyplot as plt
+    # 7. Plot 1: Full signal overview (optional - requires matplotlib)
+    try:
+        import matplotlib.pyplot as plt
+        _matplotlib_available = True
+    except ImportError:
+        _matplotlib_available = False
+        print("⚠ matplotlib not available, skipping plots")
 
-    fig, axes = plt.subplots(4, 1, figsize=(14, 10))
+    if _matplotlib_available:
+        fig, axes = plt.subplots(4, 1, figsize=(14, 10))
 
-    # Plot Signal A full view
-    axes[0].plot(t_a, signal_a, linewidth=0.5, label='Signal A (256 Hz, no drift)', alpha=0.7)
-    axes[0].set_ylabel('Amplitude')
-    axes[0].set_title('Signal A - Reference Device (Perfect Clock)')
-    axes[0].legend()
-    axes[0].grid(True, alpha=0.3)
+        # Plot Signal A full view
+        axes[0].plot(t_a, signal_a, linewidth=0.5, label='Signal A (256 Hz, no drift)', alpha=0.7)
+        axes[0].set_ylabel('Amplitude')
+        axes[0].set_title('Signal A - Reference Device (Perfect Clock)')
+        axes[0].legend()
+        axes[0].grid(True, alpha=0.3)
 
-    # Plot Signal B full view (resampled to 500 Hz)
-    axes[1].plot(t_b, signal_b, linewidth=0.5, label='Signal B (500 Hz, with drift)', alpha=0.7, color='orange')
-    axes[1].set_ylabel('Amplitude')
-    axes[1].set_title('Signal B - Device with Floating Clock (Drifted)')
-    axes[1].legend()
-    axes[1].grid(True, alpha=0.3)
+        # Plot Signal B full view (resampled to 500 Hz)
+        axes[1].plot(t_b, signal_b, linewidth=0.5, label='Signal B (500 Hz, with drift)', alpha=0.7, color='orange')
+        axes[1].set_ylabel('Amplitude')
+        axes[1].set_title('Signal B - Device with Floating Clock (Drifted)')
+        axes[1].legend()
+        axes[1].grid(True, alpha=0.3)
 
-    # Plot drift over time
-    drift_times = np.linspace(0, 24*3600, 1000)
-    drift_values = np.array([drift_fn(t) for t in drift_times])
-    axes[2].plot(drift_times / 3600, drift_values, linewidth=1, label='Clock Drift', color='green')
-    axes[2].axhline(y=0, color='k', linestyle='--', alpha=0.3)
-    axes[2].axhline(y=max_drift, color='r', linestyle='--', alpha=0.3, label=f'±{max_drift}s bounds')
-    axes[2].axhline(y=-max_drift, color='r', linestyle='--', alpha=0.3)
-    axes[2].set_xlabel('Time (hours)')
-    axes[2].set_ylabel('Drift (seconds)')
-    axes[2].set_title('Time-Varying Clock Drift Over 24 Hours')
-    axes[2].legend()
-    axes[2].grid(True, alpha=0.3)
+        # Plot drift over time
+        drift_times = np.linspace(0, 24*3600, 1000)
+        drift_values = np.array([drift_fn(t) for t in drift_times])
+        axes[2].plot(drift_times / 3600, drift_values, linewidth=1, label='Clock Drift', color='green')
+        axes[2].axhline(y=0, color='k', linestyle='--', alpha=0.3)
+        axes[2].axhline(y=max_drift, color='r', linestyle='--', alpha=0.3, label=f'±{max_drift}s bounds')
+        axes[2].axhline(y=-max_drift, color='r', linestyle='--', alpha=0.3)
+        axes[2].set_xlabel('Time (hours)')
+        axes[2].set_ylabel('Drift (seconds)')
+        axes[2].set_title('Time-Varying Clock Drift Over 24 Hours')
+        axes[2].legend()
+        axes[2].grid(True, alpha=0.3)
 
-    # Plot zoomed comparison around stimulation period (hours 6-12)
-    stim_start_idx_a = int(6 * 3600 * fs_a)
-    stim_end_idx_a = int(12.5 * 3600 * fs_a)
-    zoom_window = stim_end_idx_a - stim_start_idx_a
+        # Plot zoomed comparison around stimulation period (hours 6-12)
+        stim_start_idx_a = int(6 * 3600 * fs_a)
+        stim_end_idx_a = int(12.5 * 3600 * fs_a)
+        zoom_window = stim_end_idx_a - stim_start_idx_a
 
-    # Extract a segment from Signal A around stim time
-    signal_a_zoom = signal_a[stim_start_idx_a:stim_end_idx_a]
-    t_a_zoom = t_a[stim_start_idx_a:stim_end_idx_a]
+        # Extract a segment from Signal A around stim time
+        signal_a_zoom = signal_a[stim_start_idx_a:stim_end_idx_a]
+        t_a_zoom = t_a[stim_start_idx_a:stim_end_idx_a]
 
-    axes[3].plot(t_a_zoom / 3600, signal_a_zoom, linewidth=0.7, label='Signal A zoom', alpha=0.7)
-    axes[3].set_xlabel('Time (hours)')
-    axes[3].set_ylabel('Amplitude')
-    axes[3].set_title('Signal A - Zoom Around Stimulation Period (Hours 6-12)')
-    axes[3].legend()
-    axes[3].grid(True, alpha=0.3)
+        axes[3].plot(t_a_zoom / 3600, signal_a_zoom, linewidth=0.7, label='Signal A zoom', alpha=0.7)
+        axes[3].set_xlabel('Time (hours)')
+        axes[3].set_ylabel('Amplitude')
+        axes[3].set_title('Signal A - Zoom Around Stimulation Period (Hours 6-12)')
+        axes[3].legend()
+        axes[3].grid(True, alpha=0.3)
 
-    plt.tight_layout()
+        plt.tight_layout()
 
-    print(f"✓ Plot created with 4 subplots:")
-    print(f"  1. Signal A full view (256 Hz, reference)")
-    print(f"  2. Signal B full view (500 Hz, with drift)")
-    print(f"  3. Clock drift over time (showing ±{max_drift}s variation)")
-    print(f"  4. Signal A zoom around stimulation (hours 6-12)")
+        print(f"✓ Plot created with 4 subplots:")
+        print(f"  1. Signal A full view (256 Hz, reference)")
+        print(f"  2. Signal B full view (500 Hz, with drift)")
+        print(f"  3. Clock drift over time (showing ±{max_drift}s variation)")
+        print(f"  4. Signal A zoom around stimulation (hours 6-12)")
 
-    # Uncomment below to display the plot
-    # plt.show()
+        # Uncomment below to display the plot
+        # plt.show()
 
-    # Alternative: Save the plot to file for inspection
-    # plot_path = '/tmp/floating_clock_test_plot.png'
-    # try:
-    #     plt.savefig(plot_path, dpi=100, bbox_inches='tight')
-    #     print(f"✓ Plot saved to: {plot_path}")
-    # except Exception as e:
-    #     print(f"⚠ Could not save plot: {e}")
-    #
-    plt.close()
+        # Alternative: Save the plot to file for inspection
+        # plot_path = '/tmp/floating_clock_test_plot.png'
+        # try:
+        #     plt.savefig(plot_path, dpi=100, bbox_inches='tight')
+        #     print(f"✓ Plot saved to: {plot_path}")
+        # except Exception as e:
+        #     print(f"⚠ Could not save plot: {e}")
+        #
+        plt.close()
 
     print(f"\n--- Floating Clock Fixture Test Complete ---")
     print(f"✓ All validations passed")
