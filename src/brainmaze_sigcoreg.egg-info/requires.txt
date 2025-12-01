@@ -1,0 +1,7 @@
+numpy
+mef-tools
+
+[dev]
+pytest>=7.0
+pytest-cov
+pytest-mock

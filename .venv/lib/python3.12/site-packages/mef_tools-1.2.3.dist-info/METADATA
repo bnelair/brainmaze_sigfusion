@@ -1,0 +1,29 @@
+Metadata-Version: 2.1
+Name: mef-tools
+Version: 1.2.3
+Summary: Tools for easy and efficient handling of Multiscale Eleptrophysiology Format (MEF3).
+Home-page: https://github.com/mselair/MEF_Tools
+Author: Filip Mivalt
+Author-email: mivalt.filip@mayo.edu
+License: Apache
+Platform: UNKNOWN
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Healthcare Industry
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Natural Language :: English
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Topic :: Scientific/Engineering :: Medical Science Apps.
+Requires-Python: >=3.6
+Requires-Dist: numpy
+Requires-Dist: pandas
+Requires-Dist: pymef
+
+MefWriter and MefReader are a high-level API tools containing all headers required for convenient MEF3 file writing and reading including support for MEF3 annotations.
+
+
