@@ -498,6 +498,229 @@ def generated_signals_mef_files(tmp_path):
     }
 
 
+def _apply_clock_drift(
+        signal: np.ndarray,
+        sampling_rate: int,
+        base_shift_s: float = 3600,
+        max_drift_s: float = 10.0,
+        drift_seed: int = 54321,
+) -> tuple:
+    """
+    Apply time-varying clock drift to a signal to simulate floating clock.
+
+    Simulates crystal drift in recording device: average 0 drift with ±max_drift_s
+    over 24 hours. The drift is applied as a smooth, continuous time-varying shift.
+
+    Args:
+        signal: 1D signal array (original sampled data)
+        sampling_rate: Sampling rate in Hz
+        base_shift_s: Base constant time shift in seconds (e.g., 1 hour)
+        max_drift_s: Maximum drift in seconds (e.g., ±10s over 24 hours)
+        drift_seed: Random seed for reproducibility
+
+    Returns:
+        Tuple containing:
+        - resampled_signal: Signal with time-varying clock applied
+        - drift_function: Function drift(t) returning drift in seconds at time t
+        - metadata: Dict with drift parameters
+    """
+    num_samples = len(signal)
+    duration_s = num_samples / sampling_rate
+
+    # Create smooth drift function using sine wave for continuous drift
+    # Zero mean, amplitude = max_drift_s, period = duration_s (full cycle over record)
+    rng = np.random.default_rng(drift_seed)
+
+    # Use sum of sinusoids for more realistic drift pattern
+    # Primary frequency: one full cycle over 24 hours
+    primary_freq = 1.0 / duration_s  # Hz
+    secondary_freq = 3.0 / duration_s  # 3 cycles (faster variations)
+    tertiary_freq = 0.1 / duration_s  # Slower underlying trend
+
+    # Generate time array in seconds
+    t = np.arange(num_samples) / sampling_rate
+
+    # Create smooth drift with multiple frequency components
+    drift_primary = np.sin(2 * np.pi * primary_freq * t)
+    drift_secondary = 0.3 * np.sin(2 * np.pi * secondary_freq * t + np.pi/4)
+    drift_tertiary = 0.2 * np.sin(2 * np.pi * tertiary_freq * t + np.pi/3)
+
+    # Combine and normalize to max_drift_s
+    drift_combined = drift_primary + drift_secondary + drift_tertiary
+    drift_combined = drift_combined / np.max(np.abs(drift_combined))  # Normalize to [-1, 1]
+    drift_combined = drift_combined * max_drift_s  # Scale to ±max_drift_s
+
+    # Add small random perturbations (Brownian motion-like)
+    noise_std = max_drift_s * 0.1  # 10% of max drift
+    drift_noise = rng.normal(0, noise_std, num_samples)
+    drift_noise = np.cumsum(drift_noise) / num_samples  # Smooth it out
+
+    # Combine smooth drift with noise, ensure zero mean
+    total_drift = drift_combined + drift_noise
+    total_drift = total_drift - np.mean(total_drift)  # Zero mean drift
+
+    # Clip to ensure max drift limit
+    total_drift = np.clip(total_drift, -max_drift_s, max_drift_s)
+
+    # Create time array with base shift and time-varying drift
+    # Total time shift at each sample: base_shift_s + total_drift
+    total_shift = base_shift_s + total_drift
+
+    # Create output time array
+    t_original = np.arange(num_samples) / sampling_rate
+    t_shifted = t_original + total_shift
+
+    # Resample signal using the shifted time array
+    # Extend original time array slightly to handle edge cases
+    t_extended = np.concatenate([[-1/sampling_rate], t_original, [t_original[-1] + 1/sampling_rate]])
+    signal_extended = np.concatenate([[signal[0]], signal, [signal[-1]]])
+
+    # Linear interpolation to get resampled signal
+    resampled_signal = np.interp(t_shifted, t_extended, signal_extended)
+
+    # Define drift function for reference
+    def drift_function(time_s):
+        """Return drift in seconds at given time."""
+        idx = int(np.clip(time_s * sampling_rate, 0, num_samples - 1))
+        return total_drift[idx]
+
+    metadata = {
+        'base_shift_s': base_shift_s,
+        'max_drift_s': max_drift_s,
+        'drift_type': 'floating_clock',
+        'drift_seed': drift_seed,
+        'primary_freq_hz': primary_freq,
+        'secondary_freq_hz': secondary_freq,
+        'drift_mean': np.mean(total_drift),
+        'drift_std': np.std(total_drift),
+        'drift_max': np.max(np.abs(total_drift)),
+    }
+
+    return resampled_signal, drift_function, metadata
+
+
+@pytest.fixture
+def generated_signals_floating_clock(tmp_path):
+    """
+    Generates Signal A and Signal B with floating clock drift simulation.
+
+    This fixture creates a realistic multi-device scenario where:
+    - Signal A: Reference device (256 Hz, perfect clock)
+    - Signal B: Device with floating clock
+      - Base time shift: +1 hour
+      - Clock drift: ±10 seconds over 24 hours (simulates crystal drift)
+      - Sampling rate: 500 Hz (different from Device A)
+      - Time-varying shift simulates realistic device desynchronization
+
+    Uses temporary directory for MEF file storage (auto-cleaned after test).
+
+    Returns:
+        A dict with keys:
+            - 'signal_a': Signal A data dict (256 Hz, no drift)
+            - 'signal_b': Signal B data dict (500 Hz, with clock drift)
+            - 'file_path_a': Path to Signal A MEF file
+            - 'file_path_b': Path to Signal B MEF file
+            - 'tmp_dir': Temporary directory path
+            - 't_shift_s': Base time shift in seconds (3600)
+            - 't_shift_samples_a': Base shift in samples for Signal A (256 Hz)
+            - 't_shift_samples_b': Base shift in samples for Signal B (500 Hz)
+            - 'max_drift_s': Maximum drift in seconds (±10)
+            - 'drift_function': Function to get drift at any time
+            - 'fs_a': Signal A sampling rate (256 Hz)
+            - 'fs_b': Signal B sampling rate (500 Hz)
+    """
+    # Generate Signal A with 256 Hz (24 hours, no drift)
+    signal_a_data = _generate_test_signal_a(
+        fs=256,
+        duration_s=24 * 3600,
+        stim_start_s=6 * 3600,
+        stim_end_s=12 * 3600,
+        stim_freq_hz=50.0,
+        duty_on_s=60,
+        duty_off_s=3 * 60,
+    )
+
+    # Generate Signal B without drift first (base version at 256 Hz)
+    signal_b_data_base = _generate_test_signal_b(
+        signal_a_data=signal_a_data,
+        shift_s=3600,  # 1 hour base shift
+        buffer_before_s=5 * 60,
+        buffer_after_s=5 * 60,
+    )
+
+    # Apply floating clock drift to Signal B
+    # Maximum drift: ±10 seconds over 24 hours
+    signal_b_with_drift, drift_fn, drift_metadata = _apply_clock_drift(
+        signal=signal_b_data_base['signal'],
+        sampling_rate=256,
+        base_shift_s=3600,  # 1 hour base shift
+        max_drift_s=10.0,   # ±10 seconds drift
+        drift_seed=54321,
+    )
+
+    # Resample Signal B with drift to 500 Hz
+    fs_b_target = 500
+    signal_b_resampled = _resample_signal(signal_b_with_drift, 256, fs_b_target)
+
+    # Create new time array for resampled Signal B
+    num_samples_b_resampled = len(signal_b_resampled)
+    # Time array includes base shift only (drift is already in the signal)
+    t_b_resampled = np.arange(num_samples_b_resampled) / fs_b_target + 3600
+
+    # Calculate shifts in samples
+    shift_samples_a = int(3600 * 256)
+    shift_samples_b = int(3600 * fs_b_target)
+
+    # Update Signal B data with drift-applied signal
+    signal_b_data_updated = signal_b_data_base.copy()
+    signal_b_data_updated['signal'] = signal_b_resampled
+    signal_b_data_updated['t'] = t_b_resampled
+    signal_b_data_updated['metadata']['fs'] = fs_b_target
+    signal_b_data_updated['metadata'].update(drift_metadata)
+    signal_b_data_updated['drift_function'] = drift_fn
+
+    # Create MEF file paths
+    file_path_a = os.path.join(str(tmp_path), 'signal_a_floating_clock.mefd')
+    file_path_b = os.path.join(str(tmp_path), 'signal_b_floating_clock.mefd')
+
+    # Write to MEF files
+    # Signal A: Reference signal with perfect clock (no drift)
+    _write_signal_to_mef_file(
+        signal=signal_a_data['signal'],
+        sampling_rate=256,
+        channel_name='Device_A_Reference',
+        output_path=file_path_a,
+        metadata=signal_a_data['metadata']
+    )
+
+    # Signal B: Contains the drifted and resampled signal
+    # signal_b_resampled = resampled version of signal_b_with_drift
+    # signal_b_with_drift = result of _apply_clock_drift() with time-varying clock
+    # The MEF file contains the signal with floating clock effects applied
+    _write_signal_to_mef_file(
+        signal=signal_b_resampled,  # Drifted signal, resampled to 500 Hz
+        sampling_rate=fs_b_target,
+        channel_name='Device_B_FloatingClock',
+        output_path=file_path_b,
+        metadata=signal_b_data_updated['metadata']
+    )
+
+    return {
+        'signal_a': signal_a_data,
+        'signal_b': signal_b_data_updated,
+        'file_path_a': file_path_a,
+        'file_path_b': file_path_b,
+        'tmp_dir': str(tmp_path),
+        't_shift_s': 3600,
+        't_shift_samples_a': shift_samples_a,
+        't_shift_samples_b': shift_samples_b,
+        'max_drift_s': 10.0,
+        'drift_function': drift_fn,
+        'fs_a': 256,
+        'fs_b': fs_b_target,
+    }
+
+
 def _write_signal_to_mef_file(
         signal: np.ndarray,
         sampling_rate: int,
@@ -578,4 +801,3 @@ def _write_signal_to_mef_file(
         precision=3,
         reload_metadata=False,
     )
-

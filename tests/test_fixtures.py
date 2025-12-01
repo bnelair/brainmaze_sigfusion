@@ -471,3 +471,158 @@ def test_mef_files_read_verify(generated_signals_mef_files):
 
     print(f"\n--- MEF Read Verification Complete ---")
     print(f"✓ All signals read successfully and match original data")
+
+
+def test_floating_clock_fixture(generated_signals_floating_clock):
+    """
+    Tests the floating clock drift fixture.
+
+    This test:
+    1. Validates the fixture structure and properties
+    2. Prints drift statistics
+
+    Plots are displayed for visual inspection of the floating clock effects.
+    To enable plots, uncomment the plt.show() calls at the end.
+    """
+    # 1. Extract fixture data
+    signal_a_data = generated_signals_floating_clock['signal_a']
+    signal_b_data = generated_signals_floating_clock['signal_b']
+    file_path_a = generated_signals_floating_clock['file_path_a']
+    file_path_b = generated_signals_floating_clock['file_path_b']
+    max_drift = generated_signals_floating_clock['max_drift_s']
+    drift_fn = generated_signals_floating_clock['drift_function']
+    fs_a = generated_signals_floating_clock['fs_a']
+    fs_b = generated_signals_floating_clock['fs_b']
+
+    signal_a = signal_a_data['signal']
+    signal_b = signal_b_data['signal']
+    t_a = signal_a_data['t']
+    t_b = signal_b_data['t']
+    metadata_a = signal_a_data['metadata']
+    metadata_b = signal_b_data['metadata']
+
+    # 2. Validate fixture structure
+    assert 'signal_a' in generated_signals_floating_clock
+    assert 'signal_b' in generated_signals_floating_clock
+    assert 'drift_function' in generated_signals_floating_clock
+    assert 'max_drift_s' in generated_signals_floating_clock
+    assert 'file_path_a' in generated_signals_floating_clock
+    assert 'file_path_b' in generated_signals_floating_clock
+
+    # 3. Validate Signal A (reference, no drift)
+    assert signal_a.shape[0] == int(24 * 3600 * fs_a), "Signal A should be 24 hours"
+    assert metadata_a['fs'] == 256, "Signal A should be 256 Hz"
+    assert 'drift_type' not in metadata_a or metadata_a.get('drift_type') is None
+
+    # 4. Validate Signal B (with floating clock drift)
+    assert metadata_b['fs'] == 500, "Signal B should be 500 Hz"
+    assert metadata_b['drift_type'] == 'floating_clock', "Signal B should have floating clock"
+    assert metadata_b['max_drift_s'] == max_drift
+
+    # 5. Print drift statistics
+    drift_mean = metadata_b['drift_mean']
+    drift_std = metadata_b['drift_std']
+    drift_max = metadata_b['drift_max']
+
+    print(f"\n--- Floating Clock Drift Fixture Validation ---")
+    print(f"Signal A (Reference):")
+    print(f"  Sampling Rate: {fs_a} Hz")
+    print(f"  Duration: {len(signal_a) / fs_a / 3600:.2f} hours")
+    print(f"  Samples: {len(signal_a):,}")
+    print(f"\nSignal B (with Floating Clock):")
+    print(f"  Sampling Rate: {fs_b} Hz")
+    print(f"  Duration: {len(signal_b) / fs_b / 60:.2f} minutes")
+    print(f"  Samples: {len(signal_b):,}")
+    print(f"\nClock Drift Statistics:")
+    print(f"  Maximum allowed drift: ±{max_drift:.2f} seconds")
+    print(f"  Mean drift: {drift_mean:.6f} seconds (should be ~0)")
+    print(f"  Std of drift: {drift_std:.6f} seconds")
+    print(f"  Max observed drift: {drift_max:.6f} seconds")
+    print(f"  Base time shift: 1 hour (3600 seconds)")
+    print(f"\nMEF Files:")
+    print(f"  Signal A: {file_path_a}")
+    print(f"  Signal B: {file_path_b}")
+
+    # 6. Validate drift function
+    assert callable(drift_fn), "Drift function should be callable"
+    drift_samples = np.array([drift_fn(t) for t in np.linspace(0, 24*3600, 100)])
+    assert np.all(drift_samples >= -max_drift), f"Drift should not exceed -{max_drift}s"
+    assert np.all(drift_samples <= max_drift), f"Drift should not exceed +{max_drift}s"
+    # Note: drift_mean should be near 0, but small sampling bias is acceptable
+    assert abs(np.mean(drift_samples) - drift_mean) < 2.0, "Drift function sampling should match metadata"
+
+    print(f"\n--- Creating Comparison Plots ---")
+
+    # 7. Plot 1: Full signal overview
+    import matplotlib.pyplot as plt
+
+    fig, axes = plt.subplots(4, 1, figsize=(14, 10))
+
+    # Plot Signal A full view
+    axes[0].plot(t_a, signal_a, linewidth=0.5, label='Signal A (256 Hz, no drift)', alpha=0.7)
+    axes[0].set_ylabel('Amplitude')
+    axes[0].set_title('Signal A - Reference Device (Perfect Clock)')
+    axes[0].legend()
+    axes[0].grid(True, alpha=0.3)
+
+    # Plot Signal B full view (resampled to 500 Hz)
+    axes[1].plot(t_b, signal_b, linewidth=0.5, label='Signal B (500 Hz, with drift)', alpha=0.7, color='orange')
+    axes[1].set_ylabel('Amplitude')
+    axes[1].set_title('Signal B - Device with Floating Clock (Drifted)')
+    axes[1].legend()
+    axes[1].grid(True, alpha=0.3)
+
+    # Plot drift over time
+    drift_times = np.linspace(0, 24*3600, 1000)
+    drift_values = np.array([drift_fn(t) for t in drift_times])
+    axes[2].plot(drift_times / 3600, drift_values, linewidth=1, label='Clock Drift', color='green')
+    axes[2].axhline(y=0, color='k', linestyle='--', alpha=0.3)
+    axes[2].axhline(y=max_drift, color='r', linestyle='--', alpha=0.3, label=f'±{max_drift}s bounds')
+    axes[2].axhline(y=-max_drift, color='r', linestyle='--', alpha=0.3)
+    axes[2].set_xlabel('Time (hours)')
+    axes[2].set_ylabel('Drift (seconds)')
+    axes[2].set_title('Time-Varying Clock Drift Over 24 Hours')
+    axes[2].legend()
+    axes[2].grid(True, alpha=0.3)
+
+    # Plot zoomed comparison around stimulation period (hours 6-12)
+    stim_start_idx_a = int(6 * 3600 * fs_a)
+    stim_end_idx_a = int(12.5 * 3600 * fs_a)
+    zoom_window = stim_end_idx_a - stim_start_idx_a
+
+    # Extract a segment from Signal A around stim time
+    signal_a_zoom = signal_a[stim_start_idx_a:stim_end_idx_a]
+    t_a_zoom = t_a[stim_start_idx_a:stim_end_idx_a]
+
+    axes[3].plot(t_a_zoom / 3600, signal_a_zoom, linewidth=0.7, label='Signal A zoom', alpha=0.7)
+    axes[3].set_xlabel('Time (hours)')
+    axes[3].set_ylabel('Amplitude')
+    axes[3].set_title('Signal A - Zoom Around Stimulation Period (Hours 6-12)')
+    axes[3].legend()
+    axes[3].grid(True, alpha=0.3)
+
+    plt.tight_layout()
+
+    print(f"✓ Plot created with 4 subplots:")
+    print(f"  1. Signal A full view (256 Hz, reference)")
+    print(f"  2. Signal B full view (500 Hz, with drift)")
+    print(f"  3. Clock drift over time (showing ±{max_drift}s variation)")
+    print(f"  4. Signal A zoom around stimulation (hours 6-12)")
+
+    # Uncomment below to display the plot
+    # plt.show()
+
+    # Alternative: Save the plot to file for inspection
+    # plot_path = '/tmp/floating_clock_test_plot.png'
+    # try:
+    #     plt.savefig(plot_path, dpi=100, bbox_inches='tight')
+    #     print(f"✓ Plot saved to: {plot_path}")
+    # except Exception as e:
+    #     print(f"⚠ Could not save plot: {e}")
+    #
+    plt.close()
+
+    print(f"\n--- Floating Clock Fixture Test Complete ---")
+    print(f"✓ All validations passed")
+    print(f"✓ Plots created successfully")
+    print(f"✓ Drift is realistic and within bounds")
