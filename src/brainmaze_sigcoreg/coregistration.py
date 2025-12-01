@@ -10,11 +10,15 @@ The coregistration proceeds in two stages:
 
 Classes:
     AlignmentMap: Stores and serializes synchronization transformation
-    SignalCoregistration: Main class for computing signal alignment
+
+Functions:
+    compute_alignment: Main entry point for computing signal alignment
+    coarse_alignment: Stage I global alignment
+    fine_alignment: Stage II local refinement
 """
 
 from dataclasses import dataclass, field, asdict
-from typing import Optional, Callable, Tuple, List, Dict, Any
+from typing import Optional, Tuple, List, Dict, Any
 import json
 import numpy as np
 
