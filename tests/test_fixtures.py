@@ -594,7 +594,6 @@ def test_floating_clock_fixture(generated_signals_floating_clock):
         # Plot zoomed comparison around stimulation period (hours 6-12)
         stim_start_idx_a = int(6 * 3600 * fs_a)
         stim_end_idx_a = int(12.5 * 3600 * fs_a)
-        zoom_window = stim_end_idx_a - stim_start_idx_a
 
         # Extract a segment from Signal A around stim time
         signal_a_zoom = signal_a[stim_start_idx_a:stim_end_idx_a]
@@ -618,14 +617,6 @@ def test_floating_clock_fixture(generated_signals_floating_clock):
         # Uncomment below to display the plot
         # plt.show()
 
-        # Alternative: Save the plot to file for inspection
-        # plot_path = '/tmp/floating_clock_test_plot.png'
-        # try:
-        #     plt.savefig(plot_path, dpi=100, bbox_inches='tight')
-        #     print(f"✓ Plot saved to: {plot_path}")
-        # except Exception as e:
-        #     print(f"⚠ Could not save plot: {e}")
-        #
         plt.close()
 
     print(f"\n--- Floating Clock Fixture Test Complete ---")

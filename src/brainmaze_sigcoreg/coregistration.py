@@ -8,6 +8,10 @@ The coregistration proceeds in two stages:
 1. Stage I - Coarse Global Alignment: Computes global time offset using envelope correlation
 2. Stage II - Fine Local Alignment: Refines alignment using chunk-based approach
 
+The output is a sample-level timestamp mapping that transforms each sample from
+the source signal to the corresponding time in the reference signal's time frame.
+This handles both constant offsets and time-varying clock drift (floating clock).
+
 Classes:
     AlignmentMap: Stores and serializes synchronization transformation
 
@@ -31,13 +35,17 @@ class AlignmentMap:
     This class holds the results of coregistration including:
     - Global time offset (Stage I)
     - Local drift corrections (Stage II)
+    - Sample-level timestamp mapping for the source signal
     - Metadata about the alignment process
 
-    The alignment map can be serialized to/from JSON for persistence.
+    The alignment map provides timestamps for each sample of the source signal
+    that map to the reference signal's time frame. This handles both constant
+    clock offsets and time-varying clock drift (floating clock).
 
     Attributes:
         global_offset_s: Global time offset in seconds (t0 from Stage I)
         chunk_offsets_s: List of (time_center_s, offset_s) tuples for local corrections
+        source_timestamps_s: Array of timestamps (one per source sample) in reference time frame
         fs_source: Sampling rate of source signal (Source_B)
         fs_reference: Sampling rate of reference signal (Source_A)
         chunk_size_s: Chunk size used for Stage II alignment
@@ -46,6 +54,7 @@ class AlignmentMap:
     """
     global_offset_s: float = 0.0
     chunk_offsets_s: List[Tuple[float, float]] = field(default_factory=list)
+    source_timestamps_s: np.ndarray = field(default_factory=lambda: np.array([]))
     fs_source: float = 0.0
     fs_reference: float = 0.0
     chunk_size_s: float = 300.0  # 5 minutes default
@@ -86,11 +95,49 @@ class AlignmentMap:
             Corresponding time in reference signal's time frame
         """
         offset = self.get_offset_at_time(source_time_s)
-        return source_time_s - offset
+        return source_time_s + offset
+
+    def get_reference_timestamps(self, num_samples: Optional[int] = None) -> np.ndarray:
+        """
+        Get timestamps for each sample of the source signal in the reference time frame.
+
+        This is the primary output for mapping source signal samples to reference time.
+        Each element i gives the time in the reference signal where source sample i belongs.
+
+        Args:
+            num_samples: Number of samples to generate timestamps for.
+                        If None, uses the stored source_timestamps_s.
+
+        Returns:
+            Array of timestamps in seconds, one per source sample.
+            These timestamps are in the reference signal's time frame.
+        """
+        if num_samples is None:
+            if len(self.source_timestamps_s) > 0:
+                return self.source_timestamps_s
+            else:
+                raise ValueError("No timestamps available. Either provide num_samples or compute alignment first.")
+
+        # Generate timestamps for each sample
+        source_times = np.arange(num_samples) / self.fs_source
+
+        if not self.chunk_offsets_s:
+            # Simple case: constant offset only
+            return source_times + self.global_offset_s
+        else:
+            # Complex case: interpolate local offsets for each sample
+            chunk_centers = np.array([c[0] for c in self.chunk_offsets_s])
+            chunk_offsets = np.array([c[1] for c in self.chunk_offsets_s])
+            local_offsets = np.interp(source_times, chunk_centers, chunk_offsets)
+            return source_times + self.global_offset_s + local_offsets
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert alignment map to dictionary for serialization."""
-        return asdict(self)
+        d = asdict(self)
+        # Convert numpy array to list for JSON serialization
+        if isinstance(d['source_timestamps_s'], np.ndarray):
+            d['source_timestamps_s'] = d['source_timestamps_s'].tolist()
+        return d
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'AlignmentMap':
@@ -98,6 +145,9 @@ class AlignmentMap:
         # Convert chunk_offsets_s from list of lists to list of tuples
         if 'chunk_offsets_s' in data:
             data['chunk_offsets_s'] = [tuple(c) for c in data['chunk_offsets_s']]
+        # Convert source_timestamps_s from list to numpy array
+        if 'source_timestamps_s' in data:
+            data['source_timestamps_s'] = np.array(data['source_timestamps_s'])
         return cls(**data)
 
     def save(self, filepath: str) -> None:
@@ -455,6 +505,7 @@ def compute_alignment(
     chunk_size_s: float = 300.0,
     perform_fine_alignment: bool = True,
     envelope_freq_hz: float = 1.0,
+    generate_sample_timestamps: bool = True,
 ) -> AlignmentMap:
     """
     Compute full alignment between two signals.
@@ -462,6 +513,11 @@ def compute_alignment(
     This is the main entry point for signal coregistration. It performs:
     1. Stage I - Coarse global alignment using envelope correlation
     2. Stage II - Fine local alignment using chunk-based refinement (optional)
+    3. Generate sample-level timestamp mapping (optional)
+
+    The output includes timestamps for each sample of the source signal
+    that map to the reference signal's time frame. This handles both
+    constant clock offsets and time-varying clock drift (floating clock).
 
     Args:
         signal_reference: Reference signal (Source_A, typically 24h recording)
@@ -472,9 +528,14 @@ def compute_alignment(
         chunk_size_s: Chunk size for Stage II alignment (default: 5 minutes)
         perform_fine_alignment: Whether to perform Stage II fine alignment
         envelope_freq_hz: Envelope frequency for Stage I (affects smoothing)
+        generate_sample_timestamps: Whether to generate per-sample timestamps
 
     Returns:
-        AlignmentMap containing the computed synchronization transformation
+        AlignmentMap containing:
+        - global_offset_s: Global time offset
+        - chunk_offsets_s: Local drift corrections (if fine alignment enabled)
+        - source_timestamps_s: Timestamps for each source sample in reference time frame
+        - Metadata about the alignment
     """
     # Stage I: Coarse global alignment
     global_offset_s, correlation_score = coarse_alignment(
@@ -498,10 +559,28 @@ def compute_alignment(
             chunk_size_s=chunk_size_s,
         )
 
+    # Generate sample-level timestamps
+    num_source_samples = len(signal_source)
+    source_times = np.arange(num_source_samples) / fs_source
+
+    if generate_sample_timestamps:
+        if not chunk_offsets:
+            # Simple case: constant offset only
+            source_timestamps = source_times + global_offset_s
+        else:
+            # Complex case: interpolate local offsets for each sample
+            chunk_centers = np.array([c[0] for c in chunk_offsets])
+            chunk_offsets_arr = np.array([c[1] for c in chunk_offsets])
+            local_offsets = np.interp(source_times, chunk_centers, chunk_offsets_arr)
+            source_timestamps = source_times + global_offset_s + local_offsets
+    else:
+        source_timestamps = np.array([])
+
     # Create alignment map
     alignment_map = AlignmentMap(
         global_offset_s=global_offset_s,
         chunk_offsets_s=chunk_offsets,
+        source_timestamps_s=source_timestamps,
         fs_source=fs_source,
         fs_reference=fs_reference,
         chunk_size_s=chunk_size_s,
@@ -510,8 +589,10 @@ def compute_alignment(
             'search_range_s': search_range_s,
             'envelope_freq_hz': envelope_freq_hz,
             'perform_fine_alignment': perform_fine_alignment,
+            'generate_sample_timestamps': generate_sample_timestamps,
             'source_duration_s': len(signal_source) / fs_source,
             'reference_duration_s': len(signal_reference) / fs_reference,
+            'num_source_samples': num_source_samples,
         }
     )
 

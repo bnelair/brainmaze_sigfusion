@@ -26,6 +26,7 @@ class TestAlignmentMap:
         assert am.fs_source == 500.0
         assert am.fs_reference == 256.0
         assert am.chunk_offsets_s == []
+        assert len(am.source_timestamps_s) == 0
 
     def test_alignment_map_with_chunks(self):
         """Test AlignmentMap with chunk offsets."""
@@ -38,6 +39,18 @@ class TestAlignmentMap:
         )
         assert len(am.chunk_offsets_s) == 3
         assert am.chunk_offsets_s[0] == (150.0, 0.1)
+
+    def test_alignment_map_with_timestamps(self):
+        """Test AlignmentMap with sample-level timestamps."""
+        timestamps = np.array([3600.0, 3600.002, 3600.004, 3600.006])
+        am = AlignmentMap(
+            global_offset_s=3600.0,
+            source_timestamps_s=timestamps,
+            fs_source=500.0,
+            fs_reference=256.0,
+        )
+        assert len(am.source_timestamps_s) == 4
+        assert am.source_timestamps_s[0] == 3600.0
 
     def test_get_offset_at_time_no_chunks(self):
         """Test offset interpolation with no chunk offsets."""
@@ -62,15 +75,48 @@ class TestAlignmentMap:
     def test_transform_time(self):
         """Test time transformation from source to reference frame."""
         am = AlignmentMap(global_offset_s=3600.0)
-        # Source time 7200s should map to reference time 3600s
-        assert am.transform_time(7200.0) == 3600.0
+        # Source time 0s should map to reference time 3600s (source starts at 3600s in ref frame)
+        assert am.transform_time(0.0) == 3600.0
+        # Source time 100s should map to reference time 3700s
+        assert am.transform_time(100.0) == 3700.0
+
+    def test_get_reference_timestamps_constant_offset(self):
+        """Test generating reference timestamps with constant offset."""
+        am = AlignmentMap(
+            global_offset_s=3600.0,
+            fs_source=500.0,
+            fs_reference=256.0,
+        )
+        timestamps = am.get_reference_timestamps(num_samples=5)
+        expected = np.array([3600.0, 3600.002, 3600.004, 3600.006, 3600.008])
+        np.testing.assert_array_almost_equal(timestamps, expected)
+
+    def test_get_reference_timestamps_with_drift(self):
+        """Test generating reference timestamps with time-varying drift."""
+        # Chunks define local offsets at certain times
+        # chunk at t=0 has offset=0.0, chunk at t=2.0 has offset=2.0
+        chunks = [(0.0, 0.0), (2.0, 2.0)]  # Drift increases linearly
+        am = AlignmentMap(
+            global_offset_s=3600.0,
+            chunk_offsets_s=chunks,
+            fs_source=1.0,  # 1 Hz = 1s per sample
+            fs_reference=256.0,
+        )
+        timestamps = am.get_reference_timestamps(num_samples=3)
+        # Sample 0: source_time=0s, global=3600, local_interp(0)=0, total=0+3600+0=3600
+        # Sample 1: source_time=1s, global=3600, local_interp(1)=1, total=1+3600+1=3602
+        # Sample 2: source_time=2s, global=3600, local_interp(2)=2, total=2+3600+2=3604
+        expected = np.array([3600.0, 3602.0, 3604.0])
+        np.testing.assert_array_almost_equal(timestamps, expected)
 
     def test_serialization_dict(self):
         """Test to_dict and from_dict methods."""
         chunks = [(150.0, 0.1), (450.0, -0.2)]
+        timestamps = np.array([3600.0, 3600.002, 3600.004])
         am = AlignmentMap(
             global_offset_s=3600.0,
             chunk_offsets_s=chunks,
+            source_timestamps_s=timestamps,
             fs_source=500.0,
             fs_reference=256.0,
             correlation_score=0.95,
@@ -80,18 +126,22 @@ class TestAlignmentMap:
         assert d['global_offset_s'] == 3600.0
         assert d['fs_source'] == 500.0
         assert d['metadata']['test'] == 'value'
+        assert len(d['source_timestamps_s']) == 3
 
         am2 = AlignmentMap.from_dict(d)
         assert am2.global_offset_s == am.global_offset_s
         assert am2.chunk_offsets_s == am.chunk_offsets_s
         assert am2.correlation_score == am.correlation_score
+        np.testing.assert_array_almost_equal(am2.source_timestamps_s, am.source_timestamps_s)
 
     def test_serialization_file(self, tmp_path):
         """Test save and load methods."""
         chunks = [(150.0, 0.1), (450.0, -0.2)]
+        timestamps = np.array([3600.0, 3600.002, 3600.004])
         am = AlignmentMap(
             global_offset_s=3600.0,
             chunk_offsets_s=chunks,
+            source_timestamps_s=timestamps,
             fs_source=500.0,
             fs_reference=256.0,
         )
@@ -104,11 +154,13 @@ class TestAlignmentMap:
         with open(filepath, 'r') as f:
             data = json.load(f)
         assert data['global_offset_s'] == 3600.0
+        assert len(data['source_timestamps_s']) == 3
 
         # Load and verify
         am2 = AlignmentMap.load(filepath)
         assert am2.global_offset_s == am.global_offset_s
         assert am2.chunk_offsets_s == am.chunk_offsets_s
+        np.testing.assert_array_almost_equal(am2.source_timestamps_s, am.source_timestamps_s)
 
 
 class TestCoarseAlignment:
@@ -297,6 +349,9 @@ class TestComputeAlignment:
         assert am.fs_source == fs
         assert 'source_duration_s' in am.metadata
         assert 'reference_duration_s' in am.metadata
+        # Check sample timestamps are generated
+        assert len(am.source_timestamps_s) == len(signal)
+        assert am.metadata['num_source_samples'] == len(signal)
 
     def test_compute_alignment_with_fine(self):
         """Test alignment with fine alignment enabled."""
@@ -316,6 +371,45 @@ class TestComputeAlignment:
         assert isinstance(am, AlignmentMap)
         # Should have chunk offsets from fine alignment
         assert am.metadata['perform_fine_alignment'] is True
+        # Check sample timestamps are generated
+        assert len(am.source_timestamps_s) == len(signal)
+
+    def test_compute_alignment_timestamps_without_fine(self):
+        """Test that sample timestamps are correct without fine alignment."""
+        np.random.seed(42)
+        fs = 100.0  # Simple sampling rate
+        duration_s = 5.0
+        signal = np.random.randn(int(duration_s * fs))
+
+        am = compute_alignment(
+            signal_reference=signal,
+            signal_source=signal,
+            fs_reference=fs,
+            fs_source=fs,
+            perform_fine_alignment=False,
+        )
+
+        # Timestamps should be source_time + global_offset
+        expected = np.arange(len(signal)) / fs + am.global_offset_s
+        np.testing.assert_array_almost_equal(am.source_timestamps_s, expected)
+
+    def test_compute_alignment_no_timestamps(self):
+        """Test alignment without generating sample timestamps."""
+        np.random.seed(42)
+        fs = 256.0
+        signal = np.random.randn(int(300 * fs))
+
+        am = compute_alignment(
+            signal_reference=signal,
+            signal_source=signal,
+            fs_reference=fs,
+            fs_source=fs,
+            perform_fine_alignment=False,
+            generate_sample_timestamps=False,
+        )
+
+        # No timestamps should be generated
+        assert len(am.source_timestamps_s) == 0
 
 
 class TestCoregistrationWithFixtures:
@@ -349,11 +443,20 @@ class TestCoregistrationWithFixtures:
 
         assert am.correlation_score > 0.0, "Expected positive correlation"
 
+        # Verify sample-level timestamps
+        assert len(am.source_timestamps_s) == len(signal_b), \
+            f"Expected {len(signal_b)} timestamps, got {len(am.source_timestamps_s)}"
+        # First sample should map to global_offset_s in reference time
+        assert np.isclose(am.source_timestamps_s[0], am.global_offset_s, atol=0.01), \
+            f"First timestamp should be {am.global_offset_s}, got {am.source_timestamps_s[0]}"
+
         print(f"\n--- Coregistration Test (Same FS) ---")
         print(f"Expected position: {expected_position_s}s ({expected_position_s/3600:.2f}h)")
         print(f"Detected offset: {am.global_offset_s}s ({am.global_offset_s/3600:.2f}h)")
         print(f"Correlation score: {am.correlation_score:.4f}")
         print(f"Error: {abs(am.global_offset_s - expected_position_s)}s")
+        print(f"Sample timestamps: {len(am.source_timestamps_s)} samples")
+        print(f"Timestamp range: {am.source_timestamps_s[0]:.2f}s to {am.source_timestamps_s[-1]:.2f}s")
 
     def test_coregistration_different_fs(self, generated_signals_different_fs):
         """Test coregistration with signals at different sampling rates."""
@@ -383,6 +486,10 @@ class TestCoregistrationWithFixtures:
 
         assert am.fs_reference == fs_a
         assert am.fs_source == fs_b
+
+        # Verify sample-level timestamps
+        assert len(am.source_timestamps_s) == len(signal_b), \
+            f"Expected {len(signal_b)} timestamps, got {len(am.source_timestamps_s)}"
 
         print(f"\n--- Coregistration Test (Different FS) ---")
         print(f"Signal A: {fs_a} Hz, Signal B: {fs_b} Hz")
@@ -560,7 +667,6 @@ class TestCoregistrationFloatingClock:
         signal_b = generated_signals_floating_clock['signal_b']['signal']
         fs_a = generated_signals_floating_clock['fs_a']
         fs_b = generated_signals_floating_clock['fs_b']
-        drift_fn = generated_signals_floating_clock['drift_function']
         t_shift_s = generated_signals_floating_clock['t_shift_s']
 
         # The coregistration finds where Signal B data starts in Signal A
