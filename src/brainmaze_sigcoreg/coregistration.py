@@ -82,19 +82,10 @@ class AlignmentMap:
         chunk_centers = np.array([c[0] for c in self.chunk_offsets_s])
         chunk_offsets = np.array([c[1] for c in self.chunk_offsets_s])
 
-        # Use cubic spline for smooth interpolation
-        if len(chunk_centers) >= 2:
-            # For 2 points, cubic spline degrades to linear
-            # For 3+ points, provides smooth C2-continuous interpolation
-            if len(chunk_centers) == 2:
-                # Linear interpolation for 2 points
-                local_offset = np.interp(time_s, chunk_centers, chunk_offsets)
-            else:
-                # Cubic spline for 3+ points (smooth, no sharp transitions)
-                cs = CubicSpline(chunk_centers, chunk_offsets, bc_type='natural')
-                local_offset = float(cs(time_s))
-        else:
-            local_offset = chunk_offsets[0]
+        # Use smooth interpolation (cubic spline for 3+ points)
+        local_offset = float(_smooth_interpolate_offsets(
+            np.array([time_s]), chunk_centers, chunk_offsets
+        )[0])
         
         return self.global_offset_s + local_offset
 
@@ -140,17 +131,13 @@ class AlignmentMap:
             return source_times + self.global_offset_s
         else:
             # Complex case: interpolate local offsets for each sample
-            # Use cubic spline for smooth interpolation without sharp transitions
+            # Use smooth interpolation (cubic spline for 3+ points)
             chunk_centers = np.array([c[0] for c in self.chunk_offsets_s])
             chunk_offsets = np.array([c[1] for c in self.chunk_offsets_s])
             
-            if len(chunk_centers) >= 3:
-                # Cubic spline for smooth C2-continuous interpolation
-                cs = CubicSpline(chunk_centers, chunk_offsets, bc_type='natural')
-                local_offsets = cs(source_times)
-            else:
-                # Linear for 2 or fewer points
-                local_offsets = np.interp(source_times, chunk_centers, chunk_offsets)
+            local_offsets = _smooth_interpolate_offsets(
+                source_times, chunk_centers, chunk_offsets
+            )
             
             return source_times + self.global_offset_s + local_offsets
 
@@ -197,6 +184,36 @@ class AlignmentMap:
         with open(filepath, 'r') as f:
             data = json.load(f)
         return cls.from_dict(data)
+
+
+def _smooth_interpolate_offsets(
+    query_times: np.ndarray,
+    chunk_centers: np.ndarray,
+    chunk_offsets: np.ndarray,
+) -> np.ndarray:
+    """
+    Smoothly interpolate local offsets at query times using cubic spline.
+    
+    Uses cubic spline interpolation for 3+ points to ensure C2-continuous
+    (smooth, no sharp transitions) interpolation. Falls back to linear
+    interpolation for 2 or fewer points.
+    
+    Args:
+        query_times: Times at which to evaluate the interpolation
+        chunk_centers: Known times where offsets are available
+        chunk_offsets: Known offset values at chunk_centers
+        
+    Returns:
+        Interpolated offset values at query_times
+    """
+    if len(chunk_centers) >= 3:
+        # Cubic spline for smooth C2-continuous interpolation (3+ points)
+        # 'natural' boundary conditions: second derivative is zero at boundaries
+        cs = CubicSpline(chunk_centers, chunk_offsets, bc_type='natural')
+        return cs(query_times)
+    else:
+        # Linear interpolation for 2 or fewer points
+        return np.interp(query_times, chunk_centers, chunk_offsets)
 
 
 def _compute_signal_envelope(
@@ -592,17 +609,13 @@ def compute_alignment(
             source_timestamps = source_times + global_offset_s
         else:
             # Complex case: interpolate local offsets for each sample
-            # Use cubic spline for smooth, continuous interpolation without sharp transitions
+            # Use smooth interpolation (cubic spline for 3+ points)
             chunk_centers = np.array([c[0] for c in chunk_offsets])
             chunk_offsets_arr = np.array([c[1] for c in chunk_offsets])
             
-            if len(chunk_centers) >= 3:
-                # Cubic spline for smooth C2-continuous interpolation
-                cs = CubicSpline(chunk_centers, chunk_offsets_arr, bc_type='natural')
-                local_offsets = cs(source_times)
-            else:
-                # Linear for 2 or fewer points
-                local_offsets = np.interp(source_times, chunk_centers, chunk_offsets_arr)
+            local_offsets = _smooth_interpolate_offsets(
+                source_times, chunk_centers, chunk_offsets_arr
+            )
             
             source_timestamps = source_times + global_offset_s + local_offsets
     else:
