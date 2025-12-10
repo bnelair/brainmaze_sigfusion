@@ -5,6 +5,7 @@ from .coregistration import (
     coarse_alignment,
     fine_alignment,
 )
+from .coregistered_reader import CoregisteredMefReader
 
 __all__ = [
     "__version__",
@@ -12,4 +13,5 @@ __all__ = [
     "compute_alignment",
     "coarse_alignment",
     "fine_alignment",
+    "CoregisteredMefReader",
 ]
