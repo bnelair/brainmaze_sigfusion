@@ -4,9 +4,52 @@ import pytest
 import json
 import tempfile
 import os
+import time
 from pathlib import Path
+from mef_tools.io import MefWriter
 
 from brainmaze_sigcoreg import CoregisteredMefReader, AlignmentMap
+
+
+@pytest.fixture
+def matching_channel_mef_files(tmp_path):
+    """
+    Create two MEF files with the same channel name for coregistration testing.
+    
+    This fixture creates MEF files where both have a channel named 'CH1'
+    with similar content for testing coregistration.
+    """
+    file_path_a = tmp_path / 'matching_a.mefd'
+    file_path_b = tmp_path / 'matching_b.mefd'
+    
+    # Create signals
+    fs = 256
+    duration_s = 600  # 10 minutes
+    t = np.arange(0, duration_s, 1/fs)
+    
+    # Signal A: sine wave with noise
+    signal_a = np.sin(2 * np.pi * 1.0 * t) + 0.1 * np.random.randn(len(t))
+    
+    # Signal B: same sine wave with time shift and different noise
+    shift_samples = int(60 * fs)  # 1 minute shift
+    signal_b = np.sin(2 * np.pi * 1.0 * (t + 60)) + 0.1 * np.random.randn(len(t))
+    
+    # Write MEF files
+    writer_a = MefWriter(str(file_path_a), overwrite=True, password1='write', password2='read')
+    writer_a.write_data(signal_a, 'CH1', start_uutc=int(time.time() * 1e6), sampling_freq=fs)
+    writer_a = None
+    
+    writer_b = MefWriter(str(file_path_b), overwrite=True, password1='write', password2='read')
+    writer_b.write_data(signal_b, 'CH1', start_uutc=int(time.time() * 1e6), sampling_freq=fs)
+    writer_b = None
+    
+    return {
+        'file_path_a': str(file_path_a),
+        'file_path_b': str(file_path_b),
+        'fs': fs,
+        'shift_s': 60,
+        'shift_samples': shift_samples,
+    }
 
 
 class TestCoregisteredMefReaderBasic:
@@ -60,25 +103,25 @@ class TestCoregisteredMefReaderBasic:
 class TestCoregistration:
     """Tests for coregistration computation."""
     
-    def test_compute_coregistration_single_channel(self, generated_signals_mef_files):
-        """Test coregistration with single channel."""
-        file_path_a = generated_signals_mef_files['file_path_a']
-        file_path_b = generated_signals_mef_files['file_path_b']
+    def test_compute_coregistration_single_channel(self, matching_channel_mef_files):
+        """Test coregistration with single channel (both files have same channel name)."""
+        file_path_a = matching_channel_mef_files['file_path_a']
+        file_path_b = matching_channel_mef_files['file_path_b']
         
         with CoregisteredMefReader(
             reference_path=file_path_a,
             other_path=file_path_b,
-            password2='read_password'
+            password2='read'
         ) as reader:
-            # Compute coregistration
+            # Compute coregistration using CH1 which exists in both files
             alignment_map = reader.compute_coregistration(
-                alignment_channel='Device_A',
-                chunk_size_s=300.0
+                alignment_channel='CH1',
+                chunk_size_s=60.0  # Smaller chunks for shorter signal
             )
             
             assert isinstance(alignment_map, AlignmentMap)
             assert reader.alignment_map is not None
-            assert reader.alignment_channel == 'Device_A'
+            assert reader.alignment_channel == 'CH1'
             assert reader.target_fs is not None
             
             print(f"\n✓ Coregistration computed")
