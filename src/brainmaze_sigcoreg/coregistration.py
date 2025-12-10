@@ -25,6 +25,7 @@ from dataclasses import dataclass, field, asdict
 from typing import Optional, Tuple, List, Dict, Any
 import json
 import numpy as np
+from scipy.interpolate import CubicSpline
 
 
 @dataclass
@@ -66,6 +67,7 @@ class AlignmentMap:
         Get the total time offset at a given time point.
 
         Combines global offset with interpolated local drift correction.
+        Uses cubic spline interpolation for smooth transitions.
 
         Args:
             time_s: Time in seconds in the source signal's time frame
@@ -80,8 +82,20 @@ class AlignmentMap:
         chunk_centers = np.array([c[0] for c in self.chunk_offsets_s])
         chunk_offsets = np.array([c[1] for c in self.chunk_offsets_s])
 
-        # Interpolate offset at requested time
-        local_offset = np.interp(time_s, chunk_centers, chunk_offsets)
+        # Use cubic spline for smooth interpolation
+        if len(chunk_centers) >= 2:
+            # For 2 points, cubic spline degrades to linear
+            # For 3+ points, provides smooth C2-continuous interpolation
+            if len(chunk_centers) == 2:
+                # Linear interpolation for 2 points
+                local_offset = np.interp(time_s, chunk_centers, chunk_offsets)
+            else:
+                # Cubic spline for 3+ points (smooth, no sharp transitions)
+                cs = CubicSpline(chunk_centers, chunk_offsets, bc_type='natural')
+                local_offset = float(cs(time_s))
+        else:
+            local_offset = chunk_offsets[0]
+        
         return self.global_offset_s + local_offset
 
     def transform_time(self, source_time_s: float) -> float:
@@ -126,9 +140,18 @@ class AlignmentMap:
             return source_times + self.global_offset_s
         else:
             # Complex case: interpolate local offsets for each sample
+            # Use cubic spline for smooth interpolation without sharp transitions
             chunk_centers = np.array([c[0] for c in self.chunk_offsets_s])
             chunk_offsets = np.array([c[1] for c in self.chunk_offsets_s])
-            local_offsets = np.interp(source_times, chunk_centers, chunk_offsets)
+            
+            if len(chunk_centers) >= 3:
+                # Cubic spline for smooth C2-continuous interpolation
+                cs = CubicSpline(chunk_centers, chunk_offsets, bc_type='natural')
+                local_offsets = cs(source_times)
+            else:
+                # Linear for 2 or fewer points
+                local_offsets = np.interp(source_times, chunk_centers, chunk_offsets)
+            
             return source_times + self.global_offset_s + local_offsets
 
     def to_dict(self) -> Dict[str, Any]:
@@ -569,9 +592,18 @@ def compute_alignment(
             source_timestamps = source_times + global_offset_s
         else:
             # Complex case: interpolate local offsets for each sample
+            # Use cubic spline for smooth, continuous interpolation without sharp transitions
             chunk_centers = np.array([c[0] for c in chunk_offsets])
             chunk_offsets_arr = np.array([c[1] for c in chunk_offsets])
-            local_offsets = np.interp(source_times, chunk_centers, chunk_offsets_arr)
+            
+            if len(chunk_centers) >= 3:
+                # Cubic spline for smooth C2-continuous interpolation
+                cs = CubicSpline(chunk_centers, chunk_offsets_arr, bc_type='natural')
+                local_offsets = cs(source_times)
+            else:
+                # Linear for 2 or fewer points
+                local_offsets = np.interp(source_times, chunk_centers, chunk_offsets_arr)
+            
             source_timestamps = source_times + global_offset_s + local_offsets
     else:
         source_timestamps = np.array([])

@@ -15,6 +15,7 @@ license = { text = "MIT" }
 # Added runtime dependencies
 dependencies = [
   "numpy",
+  "scipy",
   "mef-tools",
 ]
 
