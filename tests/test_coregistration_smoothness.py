@@ -168,7 +168,7 @@ class TestClockDriftScenarios:
         """Test detection of linear clock drift (constant rate difference)."""
         np.random.seed(42)
         fs_ref = 256.0
-        fs_src = 256.1  # Slightly faster clock (0.04% difference)
+        fs_src = 256.1  # Slightly faster clock (0.039% difference)
         duration_s = 600.0
         
         # Create reference signal

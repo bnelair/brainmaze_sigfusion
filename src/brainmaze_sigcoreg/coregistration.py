@@ -200,12 +200,19 @@ def _smooth_interpolate_offsets(
     
     Args:
         query_times: Times at which to evaluate the interpolation
-        chunk_centers: Known times where offsets are available
+        chunk_centers: Known times where offsets are available (must be sorted)
         chunk_offsets: Known offset values at chunk_centers
         
     Returns:
         Interpolated offset values at query_times
     """
+    # Validate that chunk_centers are sorted (required for interpolation)
+    if len(chunk_centers) > 1 and not np.all(np.diff(chunk_centers) > 0):
+        # Sort if not already sorted
+        sort_idx = np.argsort(chunk_centers)
+        chunk_centers = chunk_centers[sort_idx]
+        chunk_offsets = chunk_offsets[sort_idx]
+    
     if len(chunk_centers) >= 3:
         # Cubic spline for smooth C2-continuous interpolation (3+ points)
         # 'natural' boundary conditions: second derivative is zero at boundaries
