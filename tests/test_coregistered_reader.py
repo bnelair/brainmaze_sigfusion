@@ -18,6 +18,14 @@ def matching_channel_mef_files(tmp_path):
     
     This fixture creates MEF files where both have a channel named 'CH1'
     with similar content for testing coregistration.
+    
+    Returns:
+        Dict with keys:
+            - 'file_path_a': Path to reference MEF file
+            - 'file_path_b': Path to other MEF file
+            - 'fs': Sampling frequency (Hz)
+            - 'shift_s': Time shift in seconds
+            - 'shift_samples': Time shift in samples
     """
     file_path_a = tmp_path / 'matching_a.mefd'
     file_path_b = tmp_path / 'matching_b.mefd'
@@ -31,8 +39,9 @@ def matching_channel_mef_files(tmp_path):
     signal_a = np.sin(2 * np.pi * 1.0 * t) + 0.1 * np.random.randn(len(t))
     
     # Signal B: same sine wave with time shift and different noise
-    shift_samples = int(60 * fs)  # 1 minute shift
-    signal_b = np.sin(2 * np.pi * 1.0 * (t + 60)) + 0.1 * np.random.randn(len(t))
+    shift_s = 60  # 1 minute shift
+    shift_samples = int(shift_s * fs)
+    signal_b = np.sin(2 * np.pi * 1.0 * (t + shift_s)) + 0.1 * np.random.randn(len(t))
     
     # Write MEF files
     writer_a = MefWriter(str(file_path_a), overwrite=True, password1='write', password2='read')
@@ -47,7 +56,7 @@ def matching_channel_mef_files(tmp_path):
         'file_path_a': str(file_path_a),
         'file_path_b': str(file_path_b),
         'fs': fs,
-        'shift_s': 60,
+        'shift_s': shift_s,
         'shift_samples': shift_samples,
     }
 

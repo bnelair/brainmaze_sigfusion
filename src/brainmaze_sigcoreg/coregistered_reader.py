@@ -137,6 +137,25 @@ class CoregisteredMefReader:
         
         return self.alignment_map
     
+    def _get_sampling_frequency(self, channel_info: Dict) -> float:
+        """
+        Safely extract sampling frequency from channel info.
+        
+        Handles both scalar and array fsamp values.
+        
+        Args:
+            channel_info: Channel information dictionary from MefReader
+            
+        Returns:
+            Sampling frequency in Hz
+        """
+        fsamp = channel_info['fsamp']
+        # Handle both array and scalar formats
+        if hasattr(fsamp, '__getitem__'):
+            return float(fsamp[0])
+        else:
+            return float(fsamp)
+    
     def _extract_alignment_signal(
         self,
         reader: MefReader,
@@ -163,8 +182,8 @@ class CoregisteredMefReader:
             # Get sampling rates
             info1 = reader.get_channel_info(ch1)
             info2 = reader.get_channel_info(ch2)
-            fs1 = float(info1['fsamp'][0])
-            fs2 = float(info2['fsamp'][0])
+            fs1 = self._get_sampling_frequency(info1)
+            fs2 = self._get_sampling_frequency(info2)
             
             if fs1 != fs2:
                 raise ValueError(
@@ -181,7 +200,7 @@ class CoregisteredMefReader:
             signal = data[0]  # Get first element
             
             info = reader.get_channel_info(channel)
-            fs = float(info['fsamp'][0])
+            fs = self._get_sampling_frequency(info)
         
         return signal, fs
     
@@ -264,7 +283,7 @@ class CoregisteredMefReader:
                 
                 # Get sampling rates
                 info_other = self.other_reader.get_channel_info(channel)
-                fs_other = float(info_other['fsamp'][0])
+                fs_other = self._get_sampling_frequency(info_other)
                 
                 # Apply temporal alignment to map to reference time frame
                 signal_aligned = self._apply_coregistration(
