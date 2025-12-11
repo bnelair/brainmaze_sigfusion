@@ -513,10 +513,10 @@ class TestCoregistrationWithFixtures:
 
         # Read signals from MEF files
         reader_a = MefReader(file_path_a, password2='read_password')
-        signal_a = reader_a.get_data('Device_A')
+        signal_a = reader_a.get_data('ECG')
 
         reader_b = MefReader(file_path_b, password2='read_password')
-        signal_b = reader_b.get_data('Device_B')
+        signal_b = reader_b.get_data('ECG')
 
         # Compute alignment
         am = compute_alignment(

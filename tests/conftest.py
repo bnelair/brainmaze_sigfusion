@@ -468,10 +468,11 @@ def generated_signals_mef_files(tmp_path):
     file_path_b = os.path.join(str(tmp_path), 'signal_b.mefd')
 
     # Write signals to MEF files
+    # Use the same channel name 'ECG' in both files to enable coregistration
     _write_signal_to_mef_file(
         signal=signal_a_data['signal'],
         sampling_rate=256,
-        channel_name='Device_A',
+        channel_name='ECG',
         output_path=file_path_a,
         metadata=signal_a_data['metadata']
     )
@@ -479,7 +480,7 @@ def generated_signals_mef_files(tmp_path):
     _write_signal_to_mef_file(
         signal=signal_b_data_updated['signal'],
         sampling_rate=fs_b_target,
-        channel_name='Device_B',
+        channel_name='ECG',
         output_path=file_path_b,
         metadata=signal_b_data_updated['metadata']
     )

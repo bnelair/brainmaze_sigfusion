@@ -344,15 +344,15 @@ def test_mef_files_read_verify(generated_signals_mef_files):
     reader_a = MefReader(file_path_a, password2='read_password')
     channels_a = reader_a.channels
     assert len(channels_a) > 0, "No channels found in Signal A MEF file"
-    assert 'Device_A' in channels_a, "Device_A channel not found in Signal A MEF file"
+    assert 'ECG' in channels_a, "ECG channel not found in Signal A MEF file"
 
     # Get start and end times
-    start_time_a = reader_a.get_property('start_time', 'Device_A')
-    end_time_a = reader_a.get_property('end_time', 'Device_A')
-    fs_a_read = reader_a.get_property('fsamp', 'Device_A')
+    start_time_a = reader_a.get_property('start_time', 'ECG')
+    end_time_a = reader_a.get_property('end_time', 'ECG')
+    fs_a_read = reader_a.get_property('fsamp', 'ECG')
 
     # Read full signal A
-    signal_a_read = reader_a.get_data('Device_A')
+    signal_a_read = reader_a.get_data('ECG')
 
     print(f"Signal A read: {len(signal_a_read)} samples at {fs_a_read} Hz")
     print(f"Start time (uUTC): {start_time_a}, End time (uUTC): {end_time_a}")
@@ -363,15 +363,15 @@ def test_mef_files_read_verify(generated_signals_mef_files):
     reader_b = MefReader(file_path_b, password2='read_password')
     channels_b = reader_b.channels
     assert len(channels_b) > 0, "No channels found in Signal B MEF file"
-    assert 'Device_B' in channels_b, "Device_B channel not found in Signal B MEF file"
+    assert 'ECG' in channels_b, "ECG channel not found in Signal B MEF file"
 
     # Get start and end times
-    start_time_b = reader_b.get_property('start_time', 'Device_B')
-    end_time_b = reader_b.get_property('end_time', 'Device_B')
-    fs_b_read = reader_b.get_property('fsamp', 'Device_B')
+    start_time_b = reader_b.get_property('start_time', 'ECG')
+    end_time_b = reader_b.get_property('end_time', 'ECG')
+    fs_b_read = reader_b.get_property('fsamp', 'ECG')
 
     # Read full signal B
-    signal_b_read = reader_b.get_data('Device_B')
+    signal_b_read = reader_b.get_data('ECG')
 
     print(f"Signal B read: {len(signal_b_read)} samples at {fs_b_read} Hz")
     print(f"Start time (uUTC): {start_time_b}, End time (uUTC): {end_time_b}")

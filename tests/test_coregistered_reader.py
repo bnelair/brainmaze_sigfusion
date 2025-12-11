@@ -146,7 +146,7 @@ class TestCoregistration:
             password2='read_password'
         ) as reader:
             with pytest.raises(ValueError, match="other_path not provided"):
-                reader.compute_coregistration(alignment_channel='Device_A')
+                reader.compute_coregistration(alignment_channel='ECG')
     
     @pytest.mark.skip(reason="Bipolar test needs matching channel names")
     def test_compute_coregistration_bipolar(self, generated_signals_mef_files):
@@ -182,11 +182,9 @@ class TestChannelPreference:
             password2='read_password'
         ) as reader:
             # Set preference
-            reader.set_channel_preference('Device_A', 'reference')
-            reader.set_channel_preference('Device_B', 'other')
+            reader.set_channel_preference('ECG', 'reference')
             
-            assert reader.channel_preference['Device_A'] == 'reference'
-            assert reader.channel_preference['Device_B'] == 'other'
+            assert reader.channel_preference['ECG'] == 'reference'
     
     def test_set_channel_preference_invalid(self, generated_signals_mef_files):
         """Test invalid channel preference."""
@@ -197,7 +195,7 @@ class TestChannelPreference:
             password2='read_password'
         ) as reader:
             with pytest.raises(ValueError, match="must be 'reference' or 'other'"):
-                reader.set_channel_preference('Device_A', 'invalid')
+                reader.set_channel_preference('ECG', 'invalid')
     
     def test_set_all_channels_preference(self, generated_signals_mef_files):
         """Test setting preference for all channels."""
@@ -212,8 +210,8 @@ class TestChannelPreference:
             # Set all to 'other'
             reader.set_all_channels_preference('other')
             
-            # Check that Device_A preference is set
-            assert reader.channel_preference.get('Device_A') == 'other'
+            # Check that ECG preference is set
+            assert reader.channel_preference.get('ECG') == 'other'
 
 
 class TestDataRetrieval:
@@ -228,7 +226,7 @@ class TestDataRetrieval:
             password2='read_password'
         ) as reader:
             # Read data from reference
-            data = reader.get_data(['Device_A'])
+            data = reader.get_data(['ECG'])
             
             assert isinstance(data, list)
             assert len(data) == 1
@@ -236,7 +234,7 @@ class TestDataRetrieval:
             assert len(data[0]) > 0
             
             print(f"\n✓ Read data from reference")
-            print(f"  Channel: Device_A")
+            print(f"  Channel: ECG")
             print(f"  Samples: {len(data[0])}")
     
     def test_get_data_from_other_without_coregistration(self, generated_signals_mef_files):
@@ -250,10 +248,10 @@ class TestDataRetrieval:
             password2='read_password'
         ) as reader:
             # Set preference to 'other' without computing coregistration
-            reader.set_channel_preference('Device_B', 'other')
+            reader.set_channel_preference('ECG', 'other')
             
             with pytest.raises(ValueError, match="coregistration not computed"):
-                reader.get_data(['Device_B'])
+                reader.get_data(['ECG'])
     
     @pytest.mark.slow
     def test_get_data_with_coregistration(self, generated_signals_mef_files):
@@ -268,15 +266,15 @@ class TestDataRetrieval:
         ) as reader:
             # Compute coregistration
             reader.compute_coregistration(
-                alignment_channel='Device_A',
+                alignment_channel='ECG',
                 chunk_size_s=300.0
             )
             
-            # Set preference to read Device_B from other file
-            reader.set_channel_preference('Device_B', 'other')
+            # Set preference to read ECG from other file
+            reader.set_channel_preference('ECG', 'other')
             
             # Read data with coregistration
-            data = reader.get_data(['Device_B'])
+            data = reader.get_data(['ECG'])
             
             assert isinstance(data, list)
             assert len(data) == 1
@@ -284,7 +282,7 @@ class TestDataRetrieval:
             assert len(data[0]) > 0
             
             print(f"\n✓ Read coregistered data")
-            print(f"  Channel: Device_B")
+            print(f"  Channel: ECG")
             print(f"  Samples: {len(data[0])}")
 
 
@@ -303,10 +301,10 @@ class TestMefReaderCompatibility:
             info = reader.get_channel_info()
             assert isinstance(info, list)
             assert len(info) > 0
-            assert info[0]['name'] == 'Device_A'
+            assert info[0]['name'] == 'ECG'
             
             # Get single channel info (returns dict)
-            info_single = reader.get_channel_info('Device_A')
+            info_single = reader.get_channel_info('ECG')
             assert isinstance(info_single, dict)
             assert 'fsamp' in info_single
     
@@ -349,7 +347,7 @@ class TestMefReaderCompatibility:
             password2='read_password'
         ) as reader:
             # Raw data should always come from reference (returns list)
-            data = reader.get_raw_data(['Device_A'])
+            data = reader.get_raw_data(['ECG'])
             
             assert isinstance(data, list)
             assert len(data) == 1
@@ -374,12 +372,12 @@ class TestStatePersistence:
         ) as reader:
             # Compute coregistration
             alignment_map = reader.compute_coregistration(
-                alignment_channel='Device_A',
+                alignment_channel='ECG',
                 chunk_size_s=300.0
             )
             
             # Set preferences
-            reader.set_channel_preference('Device_B', 'other')
+            reader.set_channel_preference('ECG', 'other')
             
             # Save state
             reader.save_alignment_state(str(state_file))
@@ -401,7 +399,7 @@ class TestStatePersistence:
             assert reader.alignment_map is not None
             assert reader.alignment_map.global_offset_s == global_offset
             assert reader.target_fs == target_fs
-            assert reader.channel_preference.get('Device_B') == 'other'
+            assert reader.channel_preference.get('ECG') == 'other'
             
             print(f"\n✓ State saved and loaded")
             print(f"  Global offset: {global_offset:.2f}s")
